@@ -76,7 +76,7 @@ int main(int argc, char **argv)
 
     string optical_flow_algorithm = argv[2];
 
-
+    
     // For further analysis
     ofstream out_transform("prev_to_cur_transformation.txt");
     ofstream out_trajectory("trajectory.txt");
@@ -86,6 +86,13 @@ int main(int argc, char **argv)
 
     VideoCapture cap(argv[1]);
     assert(cap.isOpened());
+    if (optical_flow_algorithm == "1") {
+        cout << "Ejecutando LK Sparse Optical Flow" << endl;
+    } else if (optical_flow_algorithm == "2") {
+        cout << "Ejecutando LK Dense Optical Flow" << endl;
+    } else if (optical_flow_algorithm == "3") {
+        cout << "Ejecutando Farneback Optical Flow" << endl;
+    }
 
     auto start = std::chrono::high_resolution_clock::now();
     Mat cur, cur_grey;
