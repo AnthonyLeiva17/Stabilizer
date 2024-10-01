@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
 
 # Encontrar la librería OpenCV
-find_package(OpenCV REQUIRED)
+find_package(OpenCV REQUIRED optflow)
 
 # Incluir los directorios de cabecera
 include_directories(${OpenCV_INCLUDE_DIRS})
@@ -17,7 +17,7 @@ include_directories(${OpenCV_INCLUDE_DIRS})
 add_executable(stabilizer stabilizer.cpp)
 
 # Enlazar OpenCV con el ejecutable
-target_link_libraries(stabilizer ${OpenCV_LIBS})
+target_link_libraries(stabilizer ${OpenCV_LIBS} /usr/local/lib/libopencv_optflow.so)
 
 # Mensaje para indicar que OpenCV se encontró correctamente
 message(STATUS "OpenCV version: ${OpenCV_VERSION}")

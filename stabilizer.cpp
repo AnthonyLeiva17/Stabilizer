@@ -18,14 +18,19 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include <cassert>
 #include <cmath>
 #include <fstream>
-
+#include <chrono>
+#include <opencv2/optflow.hpp>
+#include <opencv2/core.hpp>
+#include <opencv2/highgui.hpp>
+#include <opencv2/imgproc.hpp>
+#include <opencv2/videoio.hpp>
 using namespace std;
 using namespace cv;
 
 // This video stablisation smooths the global trajectory using a sliding average window
 
 const int SMOOTHING_RADIUS = 50; // In frames. The larger the more stable the video, but less reactive to sudden panning
-const int HORIZONTAL_BORDER_CROP = 100; // In pixels. Crops the border to reduce the black borders from stabilisation being too noticeable.
+const int HORIZONTAL_BORDER_CROP = 50; // In pixels. Crops the border to reduce the black borders from stabilisation being too noticeable.
 
 // 1. Get previous to current frame transformation (dx, dy, da) for all frames
 // 2. Accumulate the transformations to get the image trajectory
@@ -63,10 +68,17 @@ struct Trajectory
 
 int main(int argc, char **argv)
 {
-    if(argc < 2) {
-        cout << "./VideoStab [video.avi]" << endl;
+    if(argc < 3) {
+        cout << "Usage: ./VideoStab [video.avi] [optical_flow_algorithm]" << endl;
+        cout << "Optical Flow Algorithm: " << endl;
+        cout << "1: LK Sparse" << endl;
+        cout << "2: LK Dense" << endl;
+        cout << "3: Farneback" << endl;
         return 0;
     }
+
+    string optical_flow_algorithm = argv[2];
+
 
     // For further analysis
     ofstream out_transform("prev_to_cur_transformation.txt");
@@ -74,9 +86,11 @@ int main(int argc, char **argv)
     ofstream out_smoothed_trajectory("smoothed_trajectory.txt");
     ofstream out_new_transform("new_prev_to_cur_transformation.txt");
 
+
     VideoCapture cap(argv[1]);
     assert(cap.isOpened());
 
+    auto start = std::chrono::high_resolution_clock::now();
     Mat cur, cur_grey;
     Mat prev, prev_grey;
 
@@ -84,72 +98,115 @@ int main(int argc, char **argv)
     cap >> prev;
     cvtColor(prev, prev_grey, COLOR_BGR2GRAY);
 
-    // Step 1 - Get previous to current frame transformation (dx, dy, da) for all frames
-    vector <TransformParam> prev_to_cur_transform; // previous to current
+    // Vector para almacenar las transformaciones
+    vector<TransformParam> prev_to_cur_transform;
 
-    int k=1;
+    int k = 1;
     int max_frames = cap.get(cv::CAP_PROP_FRAME_COUNT) > 500 ? 500 : cap.get(cv::CAP_PROP_FRAME_COUNT);
     Mat last_T;
 
-    while(true) {
+    while (true) {
         cap >> cur;
 
-        if(cur.data == NULL || k > max_frames) {
+        if (cur.data == NULL || k > max_frames) {
             break;
         }
 
         cvtColor(cur, cur_grey, COLOR_BGR2GRAY);
 
-        // vector from prev to cur
-        vector <Point2f> prev_corner, cur_corner;
-        vector <Point2f> prev_corner2, cur_corner2;
-        vector <uchar> status;
-        vector <float> err;
+        if (optical_flow_algorithm == "1") {
+            // Lucas-Kanade Disperso (Sparse)
+            vector<Point2f> prev_corner, cur_corner;
+            vector<Point2f> prev_corner2, cur_corner2;
+            vector<uchar> status;
+            vector<float> err;
+            goodFeaturesToTrack(prev_grey, prev_corner, 200, 0.01, 30);
+            calcOpticalFlowPyrLK(prev_grey, cur_grey, prev_corner, cur_corner, status, err);
 
-        goodFeaturesToTrack(prev_grey, prev_corner, 200, 0.01, 30);
-        calcOpticalFlowPyrLK(prev_grey, cur_grey, prev_corner, cur_corner, status, err);
-
-        // weed out bad matches
-        for(size_t i=0; i < status.size(); i++) {
-            if(status[i]) {
-                prev_corner2.push_back(prev_corner[i]);
-                cur_corner2.push_back(cur_corner[i]);
+            // Filtrado de coincidencias válidas
+            for (size_t i = 0; i < status.size(); i++) {
+                if (status[i]) {
+                    prev_corner2.push_back(prev_corner[i]);
+                    cur_corner2.push_back(cur_corner[i]);
+                }
             }
+
+            Mat T;
+            try {
+                T = estimateRigidTransform(prev_corner2, cur_corner2, false); // false = rigid transform, no scaling/shearing
+            } catch(...) {
+                continue;
+            }
+
+            if (T.data == NULL) {
+                last_T.copyTo(T);
+            }
+            T.copyTo(last_T);
+
+            double dx = T.at<double>(0, 2);
+            double dy = T.at<double>(1, 2);
+            double da = atan2(T.at<double>(1, 0), T.at<double>(0, 0));
+
+            prev_to_cur_transform.push_back(TransformParam(dx, dy, da));
+            out_transform << k << " " << dx << " " << dy << " " << da << endl;
+
+        }   else if (optical_flow_algorithm == "2") {
+            // Lucas-Kanade Denso (Dense)
+            Mat flow;
+            optflow::calcOpticalFlowSparseToDense(prev_grey, cur_grey, flow,  8, 128, 0.05f, true, 500.0f, 1.5f);
+
+            // Cálculo de desplazamientos promedio
+            double dx = 0.0, dy = 0.0, da = 0.0;
+            int count = 0;
+
+            for (int y = 0; y < flow.rows; y++) {
+                for (int x = 0; x < flow.cols; x++) {
+                    Point2f flow_at_point = flow.at<Point2f>(y, x);
+                    dx += flow_at_point.x;
+                    dy += flow_at_point.y;
+                    count++;
+                }
+            }
+
+            dx /= count;
+            dy /= count;
+            prev_to_cur_transform.push_back(TransformParam(dx, dy, 0));
+            out_transform << k << " " << dx << " " << dy << " " << da << endl;
+        }
+        else if (optical_flow_algorithm == "3") {
+            // Farneback
+            Mat flow;
+            calcOpticalFlowFarneback(prev_grey, cur_grey, flow, 0.3, 2, 10, 5, 7, 1.5, 0);
+
+            // Cálculo de desplazamientos promedio
+            double dx = 0.0, dy = 0.0, da = 0.0;
+            int count = 0;
+
+            for (int y = 0; y < flow.rows; y++) {
+                for (int x = 0; x < flow.cols; x++) {
+                    Point2f flow_at_point = flow.at<Point2f>(y, x);
+                    dx += flow_at_point.x;
+                    dy += flow_at_point.y;
+                    count++;
+                }
+            }
+
+            dx /= count;
+            dy /= count;
+            prev_to_cur_transform.push_back(TransformParam(dx, dy, 0));
+            out_transform << k << " " << dx << " " << dy << " " << da << endl;
         }
 
-        // translation + rotation only
-        std::cout << k << std::endl;
-        Mat T;
-    try {
-        T = estimateRigidTransform(prev_corner2, cur_corner2, false); // false = rigid transform, no scaling/shearing
-    } catch(...) {
-        continue;
-    }
-
-        // in rare cases no transform is found. We'll just use the last known good transform.
-        if(T.data == NULL) {
-            last_T.copyTo(T);
-        }
-
-        T.copyTo(last_T);
-
-        // decompose T
-        double dx = T.at<double>(0,2);
-        double dy = T.at<double>(1,2);
-        double da = atan2(T.at<double>(1,0), T.at<double>(0,0));
-
-        prev_to_cur_transform.push_back(TransformParam(dx, dy, da));
-
-        out_transform << k << " " << dx << " " << dy << " " << da << endl;
-
+        // Actualiza prev para el siguiente frame
         cur.copyTo(prev);
         cur_grey.copyTo(prev_grey);
-
-        cout << "Frame: " << k << "/" << max_frames << " - good optical flow: " << prev_corner2.size() << endl;
+        
         k++;
     }
 
-    // Step 2 - Accumulate the transformations to get the image trajectory
+
+
+// Step 2 - Accumulate the transformations to get the image trajectory
 
     // Accumulated frame to frame transform
     double a = 0;
@@ -228,7 +285,7 @@ int main(int argc, char **argv)
     Mat T(2,3,CV_64F);
 
     VideoWriter outputVideo;
-    cv::Size S = cv::Size(640, 360);
+    cv::Size S = cv::Size(1920, 1080);
 
     outputVideo.open("output.avi", VideoWriter::fourcc('M','J','P','G'), cap.get(cv::CAP_PROP_FPS), S);
     assert(outputVideo.isOpened());
@@ -272,7 +329,7 @@ int main(int argc, char **argv)
         cur.copyTo(canvas(Range::all(), Range(0, cur2.cols)));
         cur2.copyTo(canvas(Range::all(), Range(cur2.cols+10, cur2.cols*2+10)));
 
-        outputVideo << cur2;
+        //outputVideo << cur2;
         // If too big to fit on the screen, then scale it down by 2, hopefully it'll fit :)
         if(canvas.cols > 1920) {
             resize(canvas, canvas, Size(canvas.cols/2, canvas.rows/2));
@@ -284,12 +341,16 @@ int main(int argc, char **argv)
         //sprintf(str, "images/%08d.jpg", k);
         //imwrite(str, canvas);
 
-       waitKey(20);
+        waitKey(20);
 
         k++;
     }
 
-    outputVideo.release();
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> iteration_time = end - start;
+    double total_time = iteration_time.count();
 
+    cout << "Tiempo de ejecución: " << total_time << endl;
+    outputVideo.release();
     return 0;
 }
