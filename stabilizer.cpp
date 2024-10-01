@@ -20,17 +20,14 @@ THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
 #include <fstream>
 #include <chrono>
 #include <opencv2/optflow.hpp>
-#include <opencv2/core.hpp>
-#include <opencv2/highgui.hpp>
-#include <opencv2/imgproc.hpp>
-#include <opencv2/videoio.hpp>
+
 using namespace std;
 using namespace cv;
 
 // This video stablisation smooths the global trajectory using a sliding average window
 
 const int SMOOTHING_RADIUS = 50; // In frames. The larger the more stable the video, but less reactive to sudden panning
-const int HORIZONTAL_BORDER_CROP = 50; // In pixels. Crops the border to reduce the black borders from stabilisation being too noticeable.
+const int HORIZONTAL_BORDER_CROP = 70; // In pixels. Crops the border to reduce the black borders from stabilisation being too noticeable.
 
 // 1. Get previous to current frame transformation (dx, dy, da) for all frames
 // 2. Accumulate the transformations to get the image trajectory
@@ -285,12 +282,15 @@ int main(int argc, char **argv)
     Mat T(2,3,CV_64F);
 
     VideoWriter outputVideo;
-    cv::Size S = cv::Size(1920, 1080);
+    int frame_width = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_WIDTH));
+    int frame_height = static_cast<int>(cap.get(cv::CAP_PROP_FRAME_HEIGHT));
+    cv::Size S = cv::Size(frame_width, frame_height);
 
     outputVideo.open("output.avi", VideoWriter::fourcc('M','J','P','G'), cap.get(cv::CAP_PROP_FPS), S);
     assert(outputVideo.isOpened());
 
-    int vert_border = HORIZONTAL_BORDER_CROP * prev.rows / prev.cols; // get the aspect ratio correct
+    int BORDER_CROP = frame_height * 0.25;
+    int vert_border = BORDER_CROP * prev.rows / prev.cols; // get the aspect ratio correct
 
     k=0;
     cap >> cur;
@@ -335,13 +335,13 @@ int main(int argc, char **argv)
             resize(canvas, canvas, Size(canvas.cols/2, canvas.rows/2));
         }
 
-        imshow("before and after", canvas);
+        //imshow("before and after", canvas); //Para mostrar el video descomentar esta linea
 
         //char str[256];
         //sprintf(str, "images/%08d.jpg", k);
         //imwrite(str, canvas);
 
-        waitKey(20);
+        //waitKey(20);
 
         k++;
     }
