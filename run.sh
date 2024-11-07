@@ -3,10 +3,10 @@
 # Ruta a la carpeta con los videos
 VIDEO_FOLDER="./videos/"
 # Nombre del ejecutable de tu programa
-EXECUTABLE="./build/stabilizer"
+EXECUTABLE="./stabilizer"
 
 # Lista de algoritmos (1 = LK Sparse, 2 = LK Dense, 3 = Farneback)
-ALGORITHMS=("1" "2" "3")
+ALGORITHMS=("2")
 
 # Repetir la ejecución para cada video 5 veces
 for video in "$VIDEO_FOLDER"*.avi; do
@@ -17,4 +17,3 @@ for video in "$VIDEO_FOLDER"*.avi; do
         done
     done
 done
-
