@@ -75,7 +75,7 @@ int main(int argc, char **argv)
     }
 
     string optical_flow_algorithm = argv[2];
-
+    double optical_flow_time = 0.0, generating_time= 0.0, transform_time = 0.0, trajectory_time = 0.0, smoothing_time = 0.0;
     
     // For further analysis
     ofstream out_transform("prev_to_cur_transformation.txt");
@@ -109,6 +109,8 @@ int main(int argc, char **argv)
     int max_frames = cap.get(cv::CAP_PROP_FRAME_COUNT) > 500 ? 500 : cap.get(cv::CAP_PROP_FRAME_COUNT);
     Mat last_T;
 
+
+    auto start_optical_flow = chrono::high_resolution_clock::now();
     while (true) {
         cap >> cur;
 
@@ -207,7 +209,8 @@ int main(int argc, char **argv)
         
         k++;
     }
-
+    auto end_optical_flow = chrono::high_resolution_clock::now();
+    optical_flow_time += chrono::duration<double>(end_optical_flow - start_optical_flow).count();
 
 
 // Step 2 - Accumulate the transformations to get the image trajectory
@@ -216,7 +219,7 @@ int main(int argc, char **argv)
     double a = 0;
     double x = 0;
     double y = 0;
-
+    auto start_trajectory = chrono::high_resolution_clock::now();
     vector <Trajectory> trajectory; // trajectory at all frames
 
     for(size_t i=0; i < prev_to_cur_transform.size(); i++) {
@@ -228,10 +231,11 @@ int main(int argc, char **argv)
 
         out_trajectory << (i+1) << " " << x << " " << y << " " << a << endl;
     }
-
+    auto end_trajectory = chrono::high_resolution_clock::now();
+    trajectory_time += chrono::duration<double>(end_trajectory - start_trajectory).count();
     // Step 3 - Smooth out the trajectory using an averaging window
     vector <Trajectory> smoothed_trajectory; // trajectory at all frames
-
+    auto start_smoothing = chrono::high_resolution_clock::now();
     for(size_t i=0; i < trajectory.size(); i++) {
         double sum_x = 0;
         double sum_y = 0;
@@ -256,11 +260,13 @@ int main(int argc, char **argv)
 
         out_smoothed_trajectory << (i+1) << " " << avg_x << " " << avg_y << " " << avg_a << endl;
     }
-
+    auto end_smoothing = chrono::high_resolution_clock::now();
+    smoothing_time += chrono::duration<double>(end_smoothing - start_smoothing).count();
     // Step 4 - Generate new set of previous to current transform, such that the trajectory ends up being the same as the smoothed trajectory
     vector <TransformParam> new_prev_to_cur_transform;
 
     // Accumulated frame to frame transform
+    auto start_generating = chrono::high_resolution_clock::now();
     a = 0;
     x = 0;
     y = 0;
@@ -283,8 +289,10 @@ int main(int argc, char **argv)
 
         out_new_transform << (i+1) << " " << dx << " " << dy << " " << da << endl;
     }
-
+    auto end_generating = chrono::high_resolution_clock::now();
+    generating_time += chrono::duration<double>(end_generating - start_generating).count();
     // Step 5 - Apply the new transformation to the video
+    auto start_transform = chrono::high_resolution_clock::now();
     cap.set(cv::CAP_PROP_POS_FRAMES, 0);
     Mat T(2,3,CV_64F);
 
@@ -352,11 +360,19 @@ int main(int argc, char **argv)
 
         k++;
     }
+    auto end_transform = chrono::high_resolution_clock::now();
+    transform_time += chrono::duration<double>(end_transform - start_transform).count();
+
 
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> iteration_time = end - start;
     double total_time = iteration_time.count();
-
+     // Resultados finales
+    cout << "Optical Flow Time: " << optical_flow_time << " seconds" << endl;
+    cout << "Trajectory Calculation Time: " << trajectory_time << " seconds" << endl;
+    cout << "Smoothing Time: " << smoothing_time << " seconds" << endl;
+    cout << "Generating Time: " << generating_time << " seconds" << endl;
+    cout << "Transform Calculation Time: " << transform_time << " seconds" << endl;
     cout << "Tiempo de ejecución: " << total_time << endl;
     outputVideo.release();
     return 0;
