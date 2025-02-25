@@ -1,4 +1,5 @@
-  GNU nano 6.2                                         CMakeLists.txt                                             M     cmake_minimum_required(VERSION 3.10)
+  
+cmake_minimum_required(VERSION 3.10)
 
 # Nombre del proyecto
 project(Stabilizer)
@@ -14,7 +15,7 @@ find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 
 # Añadir el ejecutable
-add_executable(stabilizer main.cpp)
+add_executable(stabilizer stabilizer.cpp)
 
 # Enlazar OpenCV con el ejecutable
 target_link_libraries(stabilizer ${OpenCV_LIBS})

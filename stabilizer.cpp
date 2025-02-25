@@ -344,19 +344,19 @@ int main(int argc, char **argv)
         cur.copyTo(canvas(Range::all(), Range(0, cur2.cols)));
         cur2.copyTo(canvas(Range::all(), Range(cur2.cols+10, cur2.cols*2+10)));
 
-        //outputVideo << cur2;
+        outputVideo << cur2;
         // If too big to fit on the screen, then scale it down by 2, hopefully it'll fit :)
         if(canvas.cols > 1920) {
             resize(canvas, canvas, Size(canvas.cols/2, canvas.rows/2));
         }
 
-        //imshow("before and after", canvas); //Para mostrar el video descomentar esta linea
+        imshow("before and after", canvas); //Para mostrar el video descomentar esta linea
 
         //char str[256];
         //sprintf(str, "images/%08d.jpg", k);
-        //imwrite(str, canvas);
+        imwrite(str, canvas);
 
-        //waitKey(20);
+        waitKey(20);
 
         k++;
     }
