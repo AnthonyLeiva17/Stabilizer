@@ -10,8 +10,11 @@ sudo apt-get install libopencv-dev
 ```
 
 ## Usage
-To run the stabilization program, use the following command:
+To run the stabilization program, use the following commands:
+
+
 ```bash
+make
 ./stabilizer [video.avi] [optical_flow_algorithm]
 ```
 Where `[video.avi]` is the path to the input video file and `[optical_flow_algorithm]` can be:
